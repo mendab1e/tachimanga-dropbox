@@ -36,9 +36,10 @@ class Dropbox : HttpSource(), ConfigurableSource {
     override val baseUrl = "https://www.dropbox.com"
     override val supportsLatest = true
 
-    // Tachimanga's runtime calls this virtual HttpSource hook for the source's
-    // browser URL. The older 1.4 compile-only API does not declare it.
-    fun getHomeUrl(): String = api.browserUrl()
+    // Tachimanga also displays this URL beneath the browse title. Keep source
+    // metadata static and free of pending OAuth links or authentication effects.
+    // The older 1.4 compile-only API does not declare this runtime hook.
+    fun getHomeUrl(): String = baseUrl
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0)
@@ -156,8 +157,8 @@ class Dropbox : HttpSource(), ConfigurableSource {
             Page(index, imageUrl = imageUrl(PAGE_PATH, file.id, file.rev, entry.name, entry.offset))
         }
     }
-    override fun getMangaUrl(manga: SManga) = getHomeUrl()
-    override fun getChapterUrl(chapter: SChapter) = getHomeUrl()
+    override fun getMangaUrl(manga: SManga) = api.browserUrl()
+    override fun getChapterUrl(chapter: SChapter) = api.browserUrl()
     override fun getFilterList() = FilterList()
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -205,7 +206,7 @@ class Dropbox : HttpSource(), ConfigurableSource {
         screen.addPreference(ListPreference(screen.context).apply {
             key = "connection_action"
             title = "Dropbox library actions"
-            summary = "Refresh the library or disconnect. Use Open in WebView on the Dropbox source to sign in."
+            summary = "Refresh the library or disconnect. Use the Dropbox sign-in link below to connect."
             entries = arrayOf("Choose an action", "Refresh Dropbox library", "Disconnect Dropbox")
             entryValues = arrayOf("", "refresh", "disconnect")
             setDefaultValue("")
@@ -217,7 +218,7 @@ class Dropbox : HttpSource(), ConfigurableSource {
                 false // Commands execute once and are never persisted as a selection.
             }
         })
-        text("authorization_url", "Dropbox sign-in", "Use Open in WebView on the Dropbox source to sign in directly. The link is prepared automatically; copying it to Safari is an optional fallback.", readOnly = true)
+        text("authorization_url", "Dropbox sign-in", "Open this automatically prepared link in Safari to authorize Dropbox, then paste the returned code below.", readOnly = true)
         text("auth_code", "Dropbox authorization code", "Paste the code from Dropbox. Open the source to finish sign-in; the code is then cleared.", secret = true)
     }
     private fun clearConnection() {

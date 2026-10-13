@@ -51,15 +51,14 @@ public class SettingsSmoke {
         InjektKt.getInjekt().addSingleton((TypeReference<NetworkHelper>) () -> NetworkHelper.class, network);
         Dropbox source = new Dropbox();
         // Use the parent's virtual method, exactly as Tachimanga's Source DTO does.
-        String browserUrl = ((eu.kanade.tachiyomi.source.online.HttpSource) source).getHomeUrl();
-        if (!browserUrl.startsWith("https://www.dropbox.com/oauth2/authorize?")) throw new AssertionError("Source browser hook did not return sign-in URL");
-        String verifier = (String) values.get("verifier");
+        assertCleanHome(source);
+        if (!values.isEmpty()) throw new AssertionError("Reading source metadata prepared OAuth credentials");
         PreferenceScreen screen = new PreferenceScreen(app);
         screen.setSharedPreferences(prefs);
         source.setupPreferenceScreen(screen);
         Preference build = screen.getPreferences().stream().filter(pref -> "extension_build".equals(pref.getKey())).findFirst().orElseThrow();
         if (build.isEnabled() || !build.getTitle().toString().contains(eu.kanade.tachiyomi.extension.all.dropbox.BuildConfig.VERSION_NAME)) throw new AssertionError("Executable build label missing");
-        if (!browserUrl.equals(values.get("authorization_url")) || !verifier.equals(values.get("verifier"))) throw new AssertionError("Settings rotated the browser's PKCE link");
+        assertCleanHome(source);
         for (Preference pref : screen.getPreferences()) {
             if (pref.getKey() == null || pref.getDefaultValue() == null) throw new AssertionError("Unserializable preference: " + pref.getTitle());
             pref.getCurrentValue();
@@ -92,22 +91,38 @@ public class SettingsSmoke {
     private static Preference find(PreferenceScreen screen, String key) {
         return screen.getPreferences().stream().filter(pref -> key.equals(pref.getKey())).findFirst().orElseThrow();
     }
+    private static void assertCleanHome(Dropbox source) {
+        String home = ((eu.kanade.tachiyomi.source.online.HttpSource) source).getHomeUrl();
+        if (!"https://www.dropbox.com".equals(home)) throw new AssertionError("Browse subtitle contains a dynamic URL");
+    }
     private static void exercise(Dropbox source, PreferenceScreen screen) {
         find(screen, "library_path").callChangeListener("/Books");
         if (!"/Books".equals(values.get("library_path"))) throw new AssertionError("Library preference not saved");
         String url = (String) values.get("authorization_url");
         if (url == null || !url.startsWith("https://www.dropbox.com/oauth2/authorize?") || !url.contains("code_challenge_method=S256")) throw new AssertionError("Sign-in URL not generated");
         if (!values.containsKey("verifier")) throw new AssertionError("PKCE verifier not saved");
+        String verifier = (String) values.get("verifier");
+        assertCleanHome(source);
+        if (!url.equals(values.get("authorization_url")) || !verifier.equals(values.get("verifier"))) throw new AssertionError("Source metadata changed pending authorization");
         PreferenceScreen reopened = new PreferenceScreen(screen.getContext());
         reopened.setSharedPreferences(prefs);
         new Dropbox().setupPreferenceScreen(reopened);
         if (!url.equals(find(reopened, "authorization_url").getCurrentValue())) throw new AssertionError("Sign-in URL lost when source reloaded");
-        if (!url.equals(((eu.kanade.tachiyomi.source.online.HttpSource) new Dropbox()).getHomeUrl())) throw new AssertionError("Source reload changed browser URL");
+        assertCleanHome(new Dropbox());
+        if (!url.equals(source.getMangaUrl(eu.kanade.tachiyomi.source.model.SManga.Companion.create()))) throw new AssertionError("Manga WebView lost the sign-in link");
+        if (!url.equals(source.getChapterUrl(eu.kanade.tachiyomi.source.model.SChapter.Companion.create()))) throw new AssertionError("Chapter WebView lost the sign-in link");
+        values.put("refresh_token", "test-refresh-token");
+        values.put("authorization_url", "");
+        values.put("verifier", "");
+        assertCleanHome(source);
+        if (!"https://www.dropbox.com/home".equals(source.getMangaUrl(eu.kanade.tachiyomi.source.model.SManga.Companion.create()))) throw new AssertionError("Connected manga WebView did not open Dropbox Home");
         find(reopened, "connection_action").callChangeListener("refresh");
         find(reopened, "connection_action").callChangeListener("disconnect");
         for (String key : Arrays.asList("access_token", "refresh_token", "auth_code", "verifier", "authorization_url")) {
             if (!"".equals(values.get(key))) throw new AssertionError("Disconnect did not clear " + key);
         }
-        System.out.println("Direct browser hook, automatic stable PKCE link, library edit, refresh and disconnect passed without network requests");
+        assertCleanHome(source);
+        if (!"".equals(values.get("verifier"))) throw new AssertionError("Source metadata restarted OAuth after disconnect");
+        System.out.println("Clean source subtitle across connection states, stable PKCE settings link, manga/chapter browser actions, library edit, refresh and disconnect passed without network requests");
     }
 }
