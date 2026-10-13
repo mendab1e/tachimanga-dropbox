@@ -1,0 +1,8 @@
+.gradle/
+.tooling/
+**/build/
+local.properties
+/extension/dropbox-app-key.txt
+*.jks
+*.keystore
+.DS_Store
