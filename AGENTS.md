@@ -15,7 +15,7 @@
 - Current version: `1.4.11`, version code `11`.
 - Installable artifact: `dist/tachiyomi-all.dropbox-v1.4.11.apk`.
 - Installation, connection steps, limitations, and device acceptance checks: `README.md`.
-- Recorded validation: `dist/VALIDATION.md`.
+- Local validation record: `dist/VALIDATION.md`. The entire `dist/` directory is Git-ignored; do not commit artifacts or files under it.
 - This is an extension loaded by Tachimanga, not a standalone Android or iOS reader.
 
 ## Code map

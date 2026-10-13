@@ -1,5 +1,6 @@
 .gradle/
 .tooling/
+/dist/
 **/build/
 local.properties
 /extension/dropbox-app-key.txt
