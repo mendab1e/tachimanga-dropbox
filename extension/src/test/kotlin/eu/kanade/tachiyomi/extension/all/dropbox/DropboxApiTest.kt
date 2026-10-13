@@ -129,38 +129,37 @@ class DropboxApiTest {
     }
     private fun apiWithDefaultKey(key: String) = DropboxApi(OkHttpClient(), settings,
         server.url("/2/").toString(), server.url("/2/").toString(), server.url("/oauth2/token").toString(), key)
-    @Test fun sourceBrowserReusesPendingPkceLinkAcrossReloadsAndCodeEntry() {
+    @Test fun settingsLinkReusesPendingPkceAcrossReloadsAndCodeEntry() {
         settings.values.clear()
         api = apiWithDefaultKey("bundled-key")
-        val link = api.browserUrl()
+        val link = api.signInLink()
         val verifier = settings.get("verifier")
         assertEquals("bundled-key", link.toHttpUrl().queryParameter("client_id"))
         assertEquals(link, api.signInLink())
         api.updateSetting("auth_code", "pending-code")
         api = apiWithDefaultKey("bundled-key") // Host recreates a source after preference edits.
-        assertEquals(link, api.browserUrl())
+        assertEquals(link, api.signInLink())
         assertEquals(verifier, settings.get("verifier"))
         assertEquals("pending-code", settings.get("auth_code"))
         assertEquals(0, server.requestCount)
     }
-    @Test fun connectedSourceBrowserDoesNotStartANewAuthorization() {
-        assertEquals("https://www.dropbox.com/home", api.browserUrl())
+    @Test fun connectedSettingsDoNotStartANewAuthorization() {
         assertEquals("", api.signInLink())
         assertEquals("", settings.get("verifier"))
         assertEquals("old-token", settings.get("access_token"))
         assertEquals("refresh-token", settings.get("refresh_token"))
     }
-    @Test fun changingAppOrDisconnectingReplacesTheBrowserLink() {
+    @Test fun changingAppOrDisconnectingReplacesTheSettingsLink() {
         settings.values.clear()
         api = apiWithDefaultKey("bundled-key")
-        val first = api.browserUrl()
+        val first = api.signInLink()
         api.updateSetting("app_key", "custom-key")
-        val second = api.browserUrl()
+        val second = api.signInLink()
         assertNotEquals(first, second)
         assertEquals("custom-key", second.toHttpUrl().queryParameter("client_id"))
         val verifier = settings.get("verifier")
         api.disconnect()
-        assertNotEquals(second, api.browserUrl())
+        assertNotEquals(second, api.signInLink())
         assertNotEquals(verifier, settings.get("verifier"))
     }
     @Test fun disconnectDoesNotWaitForOrRestorePendingCodeExchange() {

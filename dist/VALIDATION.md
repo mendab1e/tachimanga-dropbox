@@ -1,4 +1,4 @@
-# Validation — Dropbox extension 1.4.10
+# Validation — Dropbox extension 1.4.11
 
 - Release APK compiled successfully with JDK 17, Gradle 8.2.1 and Android SDK 34.
 - 60 JVM tests passed; 0 failures, 0 errors, 0 skipped. Includes a mock Dropbox browse-to-page integration.
@@ -16,15 +16,15 @@
 - APK v1/v2 signatures verified with Android apksigner. This is a personal/debug-signed build.
 - APK class definitions inspected with dexdump: no host API, Injekt, Kotlin, OkHttp, RxJava, or serialization implementations bundled.
 - Archive reader requires valid partial-content responses and verifies decompressed size/CRC.
-- Version code increased to 10; packaged artifact is `tachiyomi-all.dropbox-v1.4.10.apk`. Signing certificate matches the preceding personal build; the packaged SHA-256 checksum was verified.
+- Version code increased to 11; packaged artifact is `tachiyomi-all.dropbox-v1.4.11.apk`. Signing certificate matches the preceding personal build; the packaged SHA-256 checksum was verified.
 
 - Public maintainer app key remains bundled and was confirmed in the APK. Existing tests for bundled-key PKCE exchange/refresh, custom-key fallback, and preservation of credentials for equivalent effective keys passed.
 
 - Settings compatibility: the old code reproduced `NoSuchMethodError: EditTextPreference.setPersistent(boolean)` against the installed Tachimanga 5.1 runtime. The corrected release passes offline settings construction and the host JSON serialization using that runtime. Library edits, automatically prepared sign-in links, saved PKCE link across source reloads, refresh and disconnect were exercised with memory-only preferences and no network requests. Plain click listeners are no-ops in this host. Sign-in uses the automatically prepared settings link in Safari. Source metadata uses a static Dropbox website URL.
 
-- Browse subtitle regression: the user screenshot confirmed that the OAuth URL returned by getHomeUrl() was also displayed below the browse title. Runtime integration now calls that method through the parent HttpSource type and checks the static https://www.dropbox.com URL before sign-in, while authorization is pending, after connecting, after reload, and after disconnect. Reading source metadata leaves credentials untouched and never prepares or rotates PKCE state. Settings keep their stable sign-in link, and separate manga/chapter WebView actions retain pending authorization / connected Dropbox Home URLs. Native rendering of this fix still requires device verification.
+- Browse subtitle regression: the user screenshot confirmed that the OAuth URL returned by getHomeUrl() was also displayed below the browse title. Runtime integration now calls that method through the parent HttpSource type and checks the static https://www.dropbox.com URL before sign-in, while authorization is pending, after connecting, after reload, and after disconnect. Reading source metadata leaves credentials untouched and never prepares or rotates PKCE state. Settings keep their stable sign-in link. All source/manga/chapter browser hooks return the static website URL and leave authentication settings untouched. Authorization is exclusively through the settings link; browserUrl() was removed, and authentication errors now point to source settings. Native rendering of this fix still requires device verification.
 
-- Version diagnostics: the installed Tachimanga 5.1 runtime's actual APK parser recognizes version 1.4.10/code 10. Settings serialize six preferences, including the disabled executable build label. Packaging rejects a stale APK whose manifest differs from Gradle configuration. The user reports importing updates through Extensions → + while seeing 1.4.6; the device-side cause remains unconfirmed until the new settings label is checked.
+- Version diagnostics: the installed Tachimanga 5.1 runtime's actual APK parser recognizes version 1.4.11/code 11. Settings serialize six preferences, including the disabled executable build label. Packaging rejects a stale APK whose manifest differs from Gradle configuration. The user reports importing updates through Extensions → + while seeing 1.4.6; the device-side cause remains unconfirmed until the new settings label is checked.
 
 Credential storage remains in host source preferences. At-rest encryption, backup exclusions and host diagnostic handling on iOS are unverified and require host support; the extension has no implemented secure-storage bridge.
 

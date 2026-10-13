@@ -90,8 +90,6 @@ internal class DropboxApi(
         authorizationUrl()
     }
 
-    fun browserUrl() = signInLink().ifBlank { "https://www.dropbox.com/home" }
-
     fun authorizationUrl(): String = synchronized(stateLock) {
         val key = appKey()
         if (key.isEmpty()) throw IOException("Set your Dropbox app key in the source settings first.")
@@ -119,7 +117,7 @@ internal class DropboxApi(
         val code = state.getValue("auth_code").trim()
         if (code.isNotEmpty()) {
             val verifier = state.getValue("verifier")
-            if (verifier.isBlank()) throw IOException("Open Dropbox using the source's Open in WebView action before pasting an authorization code.")
+            if (verifier.isBlank()) throw IOException("Open source settings and use the Dropbox sign-in link before pasting an authorization code.")
             val result = token(FormBody.Builder().add("grant_type", "authorization_code")
                 .add("client_id", key).add("code", code).add("code_verifier", verifier).build())
             return@synchronized saveToken(result, expected, clearCode = true)
@@ -130,7 +128,7 @@ internal class DropboxApi(
         if (current.isNotBlank() && ((!force && expires > System.currentTimeMillis() + 60000) ||
                 (force && current != rejected && expires > System.currentTimeMillis() + 60000))) return current
         val refresh = state.getValue("refresh_token").trim()
-        if (refresh.isBlank() || key.isBlank()) throw IOException("Use the Dropbox source's Open in WebView action to sign in, paste the authorization code in settings, then browse again.")
+        if (refresh.isBlank() || key.isBlank()) throw IOException("Use the Dropbox sign-in link in source settings, paste the authorization code there, then browse again.")
         saveToken(token(FormBody.Builder().add("grant_type", "refresh_token")
             .add("client_id", key).add("refresh_token", refresh).build()), expected)
     }

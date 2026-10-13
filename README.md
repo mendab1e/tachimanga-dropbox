@@ -4,13 +4,13 @@ A Kotlin extension targeting the Tachiyomi **1.4** API supported by Tachimanga. 
 
 ## Install
 
-1. Transfer `dist/tachiyomi-all.dropbox-v1.4.10.apk` to your iPhone or iPad (Files, AirDrop, or iCloud Drive).
+1. Transfer `dist/tachiyomi-all.dropbox-v1.4.11.apk` to your iPhone or iPad (Files, AirDrop, or iCloud Drive).
 2. In Tachimanga, open **Browser/Browse → Extensions → +**, then select the APK. See [Tachimanga's manual-install guide](https://tachimanga.app/help/guides/extensions.html).
 3. Open **Sources → Dropbox → source settings** and follow the connection steps below.
 
 The APK is an extension package loaded by Tachimanga; you do not install it as an iOS application.
 
-If an imported update still shows 1.4.6, fully close and reopen Tachimanga, then check Dropbox's source settings. The top row must say **Dropbox extension 1.4.10**, with **Installed source build 1.4.10 (code 10)** beneath it. This label comes from the loaded source code independently of the Extensions list metadata. If it shows 1.4.10 while the list shows 1.4.6, the list metadata is stale; if the row is absent or older, the new source has not loaded. The release APK's manifest and Tachimanga's own offline APK parser both report 1.4.10/code 10. Ensure you select the exact new filename when importing.
+If an imported update still shows 1.4.6, fully close and reopen Tachimanga, then check Dropbox's source settings. The top row must say **Dropbox extension 1.4.11**, with **Installed source build 1.4.11 (code 11)** beneath it. This label comes from the loaded source code independently of the Extensions list metadata. If it shows 1.4.11 while the list shows 1.4.6, the list metadata is stale; if the row is absent or older, the new source has not loaded. The release APK's manifest and Tachimanga's own offline APK parser both report 1.4.11/code 11. Ensure you select the exact new filename when importing.
 
 ## Connect your Dropbox
 
@@ -21,7 +21,7 @@ This APK includes the maintainer's public app key. You do **not** need a develop
 3. In source settings, open **Dropbox sign-in**, copy its automatically prepared link, and open it in Safari.
 4. Sign in and approve read access. Copy Dropbox's authorization code into **Dropbox authorization code** in source settings, then browse the source to finish connecting.
 
-The pending sign-in link is generated automatically and reused across source/settings reloads, keeping its PKCE verifier stable while you sign in. To reconnect as another account, select **Dropbox library actions → Disconnect Dropbox**, reopen settings, and use the new sign-in link. The source browser always opens the Dropbox website. Tachimanga also displays that URL beneath the browse title, so it must remain static rather than contain a pending authorization link.
+The pending sign-in link is generated automatically and reused across source/settings reloads, keeping its PKCE verifier stable while you sign in. To reconnect as another account, select **Dropbox library actions → Disconnect Dropbox**, reopen settings, and use the new sign-in link. Authorization is available only through this settings link. Browser actions use the plain Dropbox website URL and never prepare sign-in links.
 
 Tachimanga 5.1 runtime does not expose an iOS clipboard service to extensions: Android clipboard methods throw `Stub!`, and `Context.startActivity` and plain preference-click handling are no-ops. Therefore, this extension cannot supply a working native Copy button or clickable WebView link inside settings. Those controls require Tachimanga host support. Copying the authorization code back to source settings is still required because no native OAuth callback bridge is available.
 
@@ -66,7 +66,7 @@ An explicit series cover is used when available. Otherwise, the first page of th
 
 ## Streaming and limits
 
-The reader obtains archive metadata, fetches the ZIP central directory with HTTP byte ranges, and fetches/decompresses only the selected page's compressed data. Requests pin the Dropbox revision so an upload cannot mix bytes from different versions. Page URLs also identify the ZIP entry offset, so duplicate filenames remain distinct. Existing name-only page URLs still work for unique filenames; refresh the chapter if a legacy URL has an ambiguous name. Small archives under approximately 65 KiB can fit entirely in the tail/index request. The source WebView opens the Dropbox website. Manga/chapter WebView actions open a pending sign-in link when disconnected and Dropbox Home when connected.
+The reader obtains archive metadata, fetches the ZIP central directory with HTTP byte ranges, and fetches/decompresses only the selected page's compressed data. Requests pin the Dropbox revision so an upload cannot mix bytes from different versions. Page URLs also identify the ZIP entry offset, so duplicate filenames remain distinct. Existing name-only page URLs still work for unique filenames; refresh the chapter if a legacy URL has an ambiguous name. Small archives under approximately 65 KiB can fit entirely in the tail/index request. All browser actions use the plain Dropbox website URL; authorization uses the settings link.
 
 - Standard ZIP/CBZ with **stored** or **deflate** compression is supported, including data descriptors and Unicode filenames.
 - Encrypted, split/multi-part, ZIP64, CBR/RAR, PDF and other compression methods are unsupported. Repack them as ordinary ZIP/CBZ files.
@@ -122,7 +122,7 @@ The `host-api` module contains pinned original extension API 1.4.2 and Injekt so
 
 Automated JVM tests cover the Dropbox browse → series → archive → page flow using MockWebServer, pagination, PKCE exchange, token expiry/401 renewal, HTTP ranges and revisions, Unicode headers, natural ordering, stored/deflated archives, CRC corruption, encrypted/ZIP64 rejection and page-size limits. Security regressions cover oversized filenames and indexes, cache eviction by memory, simultaneous load limits, malformed/oversized token responses, host observer isolation and refusal of token redirects. Regression tests also cover disconnect during pending sign-in/refresh, app-key changes, nonblocking cache invalidation during slow loads, overlapping catalog refresh ordering, grouping at the 100,000-item limit, duplicate ZIP filenames, legacy page references, and canonical cover/relative-path comparisons after casing changes. Performance regression tests also cover shared archive loads and invalidation, catalog freshness/forced refresh, cover metadata reuse and revision updates, ZIP-tail request counts, and indexed lookups across 20,000 entries. No real Dropbox credentials are needed for these tests.
 
-An offline integration check against the Java runtime bundled with the installed Tachimanga 5.1 reproduces the old settings crash and verifies APK version parsing, the executable build label, settings construction, preference JSON serialization, library edits, automatic stable PKCE links across source reloads, stable source metadata across connection states, manga/chapter browser actions, refresh, and disconnect after the fix. It uses in-memory test preferences and makes no Dropbox requests or changes to the installed app's data. Run it after compiling with:
+An offline integration check against the Java runtime bundled with the installed Tachimanga 5.1 reproduces the old settings crash and verifies APK version parsing, the executable build label, settings construction, preference JSON serialization, library edits, automatic stable PKCE links across source reloads, stable source metadata and browser URLs across connection states, settings-only authorization, refresh, and disconnect after the fix. It uses in-memory test preferences and makes no Dropbox requests or changes to the installed app's data. Run it after compiling with:
 
 ```sh
 python3 scripts/test_tachimanga_runtime.py

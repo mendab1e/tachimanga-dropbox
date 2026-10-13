@@ -157,8 +157,8 @@ class Dropbox : HttpSource(), ConfigurableSource {
             Page(index, imageUrl = imageUrl(PAGE_PATH, file.id, file.rev, entry.name, entry.offset))
         }
     }
-    override fun getMangaUrl(manga: SManga) = api.browserUrl()
-    override fun getChapterUrl(chapter: SChapter) = api.browserUrl()
+    override fun getMangaUrl(manga: SManga) = baseUrl
+    override fun getChapterUrl(chapter: SChapter) = baseUrl
     override fun getFilterList() = FilterList()
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {

@@ -92,8 +92,12 @@ public class SettingsSmoke {
         return screen.getPreferences().stream().filter(pref -> key.equals(pref.getKey())).findFirst().orElseThrow();
     }
     private static void assertCleanHome(Dropbox source) {
+        Map<String, Object> before = new HashMap<>(values);
         String home = ((eu.kanade.tachiyomi.source.online.HttpSource) source).getHomeUrl();
         if (!"https://www.dropbox.com".equals(home)) throw new AssertionError("Browse subtitle contains a dynamic URL");
+        if (!home.equals(source.getMangaUrl(eu.kanade.tachiyomi.source.model.SManga.Companion.create()))) throw new AssertionError("Manga browser contains an authorization URL");
+        if (!home.equals(source.getChapterUrl(eu.kanade.tachiyomi.source.model.SChapter.Companion.create()))) throw new AssertionError("Chapter browser contains an authorization URL");
+        if (!before.equals(values)) throw new AssertionError("Browser hooks changed authentication settings");
     }
     private static void exercise(Dropbox source, PreferenceScreen screen) {
         find(screen, "library_path").callChangeListener("/Books");
@@ -109,13 +113,10 @@ public class SettingsSmoke {
         new Dropbox().setupPreferenceScreen(reopened);
         if (!url.equals(find(reopened, "authorization_url").getCurrentValue())) throw new AssertionError("Sign-in URL lost when source reloaded");
         assertCleanHome(new Dropbox());
-        if (!url.equals(source.getMangaUrl(eu.kanade.tachiyomi.source.model.SManga.Companion.create()))) throw new AssertionError("Manga WebView lost the sign-in link");
-        if (!url.equals(source.getChapterUrl(eu.kanade.tachiyomi.source.model.SChapter.Companion.create()))) throw new AssertionError("Chapter WebView lost the sign-in link");
         values.put("refresh_token", "test-refresh-token");
         values.put("authorization_url", "");
         values.put("verifier", "");
         assertCleanHome(source);
-        if (!"https://www.dropbox.com/home".equals(source.getMangaUrl(eu.kanade.tachiyomi.source.model.SManga.Companion.create()))) throw new AssertionError("Connected manga WebView did not open Dropbox Home");
         find(reopened, "connection_action").callChangeListener("refresh");
         find(reopened, "connection_action").callChangeListener("disconnect");
         for (String key : Arrays.asList("access_token", "refresh_token", "auth_code", "verifier", "authorization_url")) {
@@ -123,6 +124,6 @@ public class SettingsSmoke {
         }
         assertCleanHome(source);
         if (!"".equals(values.get("verifier"))) throw new AssertionError("Source metadata restarted OAuth after disconnect");
-        System.out.println("Clean source subtitle across connection states, stable PKCE settings link, manga/chapter browser actions, library edit, refresh and disconnect passed without network requests");
+        System.out.println("Settings-only stable PKCE link, clean browser hooks across connection states, library edit, refresh and disconnect passed without network requests");
     }
 }
