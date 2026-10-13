@@ -10,8 +10,6 @@ A Kotlin extension targeting the Tachiyomi **1.4** API supported by Tachimanga. 
 
 The APK is an extension package loaded by Tachimanga; you do not install it as an iOS application.
 
-If an imported update still shows 1.4.6, fully close and reopen Tachimanga, then check Dropbox's source settings. The top row must say **Dropbox extension 1.4.11**, with **Installed source build 1.4.11 (code 11)** beneath it. This label comes from the loaded source code independently of the Extensions list metadata. If it shows 1.4.11 while the list shows 1.4.6, the list metadata is stale; if the row is absent or older, the new source has not loaded. The release APK's manifest and Tachimanga's own offline APK parser both report 1.4.11/code 11. Ensure you select the exact new filename when importing.
-
 ## Connect your Dropbox
 
 This APK includes the maintainer's public app key. You do **not** need a developer account or an app key:
