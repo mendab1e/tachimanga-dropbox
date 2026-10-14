@@ -54,7 +54,8 @@ internal class DropboxApi(
     private val client = privateDropboxClient(client)
     // Only background token exchanges use tokenLock. UI actions never wait for network I/O.
     private val tokenLock = Any()
-    private val stateLock = Any()
+    // Source instances can be recreated while the Android callback is in flight.
+    private val stateLock = AUTH_STATE_LOCK
     private var session = 0L
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -69,11 +70,12 @@ internal class DropboxApi(
             settings.put(emptyCredentials() + (key to value))
         } else {
             if (key == "auth_code") session++
-            settings.put(mapOf(key to value))
+            settings.put((if (key == "auth_code") emptyCallback() else emptyMap()) + (key to value))
         }
     }
 
-    private fun emptyCredentials() = listOf("access_token", "refresh_token", "expires_at", "auth_code", "verifier", "authorization_url").associateWith { "" }
+    private fun emptyCallback() = listOf("callback_state", "callback_verifier", "callback_expires_at", "callback_claim").associateWith { "" }
+    private fun emptyCredentials() = listOf("access_token", "refresh_token", "expires_at", "auth_code", "verifier", "authorization_url").associateWith { "" } + emptyCallback()
     private fun appKey() = settings.get("app_key").trim().ifBlank { defaultAppKey }
     private fun currentSession() = synchronized(stateLock) { session }
     private fun checkSession(expected: Long) {
@@ -93,18 +95,74 @@ internal class DropboxApi(
     fun authorizationUrl(): String = synchronized(stateLock) {
         val key = appKey()
         if (key.isEmpty()) throw IOException("Set your Dropbox app key in the source settings first.")
-        val verifier = ByteArray(32).apply { SecureRandom().nextBytes(this) }.joinToString("") { "%02x".format(it.toInt() and 255) }
-        val challenge = verifier.toByteArray(Charsets.US_ASCII).toByteString().sha256().base64Url().trimEnd('=')
+        val verifier = randomValue()
         session++
-        settings.put(mapOf("verifier" to verifier, "auth_code" to ""))
+        settings.put(emptyCallback() + mapOf("verifier" to verifier, "auth_code" to ""))
+        authorizationBuilder(key, verifier).build().toString().also { settings.put(mapOf("authorization_url" to it)) }
+    }
+
+    private fun randomValue() = ByteArray(32).apply { SecureRandom().nextBytes(this) }
+        .joinToString("") { "%02x".format(it.toInt() and 255) }
+
+    private fun authorizationBuilder(key: String, verifier: String) =
         "https://www.dropbox.com/oauth2/authorize".toHttpUrl().newBuilder()
             .addQueryParameter("client_id", key)
             .addQueryParameter("response_type", "code")
             .addQueryParameter("token_access_type", "offline")
             .addQueryParameter("code_challenge_method", "S256")
-            .addQueryParameter("code_challenge", challenge)
+            .addQueryParameter("code_challenge", verifier.toByteArray(Charsets.US_ASCII).toByteString().sha256().base64Url().trimEnd('='))
             .addQueryParameter("scope", "files.metadata.read files.content.read")
-            .build().toString().also { settings.put(mapOf("authorization_url" to it)) }
+
+    fun isConnected(): Boolean = synchronized(stateLock) { settings.get("refresh_token").isNotBlank() }
+
+    /** Separate PKCE state leaves the no-redirect manual link usable as a fallback. */
+    fun beginAndroidSignIn(): String = synchronized(stateLock) {
+        val key = appKey()
+        if (key.isBlank()) throw IOException("Set your Dropbox app key in source settings first.")
+        if (isConnected()) throw IOException("Disconnect Dropbox before connecting another account.")
+        val state = randomValue()
+        val verifier = randomValue()
+        session++
+        settings.put(mapOf("callback_state" to state, "callback_verifier" to verifier,
+            "callback_expires_at" to (System.currentTimeMillis() + 10 * 60 * 1000).toString(), "callback_claim" to "", "auth_code" to ""))
+        authorizationBuilder(key, verifier).addQueryParameter("redirect_uri", OAuthContract.REDIRECT_URI)
+            .addQueryParameter("state", state).build().toString()
+    }
+
+    fun cancelAndroidSignIn(state: String) = synchronized(stateLock) {
+        if (state.isNotBlank() && state == settings.get("callback_state")) {
+            session++
+            settings.put(emptyCallback())
+        }
+    }
+
+    /** Runs in the reader's process. Neither verifier nor tokens cross the activity bridge. */
+    fun completeAndroidSignIn(state: String, code: String) = synchronized(tokenLock) {
+        val pending = synchronized(stateLock) {
+            if (!OAuthContract.validCode(code) || state.isBlank() || state != settings.get("callback_state") ||
+                settings.get("callback_verifier").isBlank() || settings.get("callback_claim").isNotBlank() ||
+                (settings.get("callback_expires_at").toLongOrNull() ?: 0) <= System.currentTimeMillis()) {
+                throw IOException("Dropbox sign-in session expired or changed. Start sign-in again in source settings.")
+            }
+            settings.put(mapOf("callback_claim" to "exchanging"))
+            Triple(appKey(), settings.get("callback_verifier"), session)
+        }
+        try {
+            val result = token(FormBody.Builder().add("grant_type", "authorization_code")
+                .add("client_id", pending.first).add("code", code).add("code_verifier", pending.second)
+                .add("redirect_uri", OAuthContract.REDIRECT_URI).build())
+            synchronized(stateLock) {
+                // Check persisted state too: a different source instance may have disconnected,
+                // changed apps, entered a manual code, or started another authorization.
+                if (state != settings.get("callback_state") || pending.second != settings.get("callback_verifier") ||
+                    pending.first != appKey() || settings.get("callback_claim") != "exchanging" ||
+                    (settings.get("callback_expires_at").toLongOrNull() ?: 0) <= System.currentTimeMillis()) connectionChanged()
+                saveToken(result, pending.third, clearCode = true)
+            }
+        } catch (error: IOException) {
+            cancelAndroidSignIn(state)
+            throw error
+        }
     }
 
     private fun accessToken(expected: Long, force: Boolean = false, rejected: String = ""): String = synchronized(tokenLock) {
@@ -120,7 +178,11 @@ internal class DropboxApi(
             if (verifier.isBlank()) throw IOException("Open source settings and use the Dropbox sign-in link before pasting an authorization code.")
             val result = token(FormBody.Builder().add("grant_type", "authorization_code")
                 .add("client_id", key).add("code", code).add("code_verifier", verifier).build())
-            return@synchronized saveToken(result, expected, clearCode = true)
+            return@synchronized synchronized(stateLock) {
+                // A callback can supersede a manual exchange from a recreated source.
+                if (appKey() != key || settings.get("auth_code").trim() != code || settings.get("verifier") != verifier) connectionChanged()
+                saveToken(result, expected, clearCode = true)
+            }
         }
         val current = state.getValue("access_token")
         val expires = state.getValue("expires_at").toLongOrNull() ?: 0
@@ -160,7 +222,7 @@ internal class DropboxApi(
         if (clearCode && value.refresh.isBlank()) throw IOException("Dropbox did not return offline access. Reconnect Dropbox.")
         val fields = mutableMapOf("access_token" to value.access, "expires_at" to (System.currentTimeMillis() + value.expires * 1000).toString())
         value.refresh.takeIf { it.isNotEmpty() }?.let { fields["refresh_token"] = it }
-        if (clearCode) fields.putAll(mapOf("auth_code" to "", "verifier" to "", "authorization_url" to ""))
+        if (clearCode) fields.putAll(mapOf("auth_code" to "", "verifier" to "", "authorization_url" to "") + emptyCallback())
         settings.put(fields)
         value.access
     }
@@ -265,6 +327,7 @@ internal class DropboxApi(
         return buffer.readByteArray()
     }
     companion object {
+        private val AUTH_STATE_LOCK = Any()
         fun asciiJson(value: String) = buildString {
             value.forEach { if (it.code >= 127) append("\\u%04x".format(it.code)) else append(it) }
         }

@@ -1,27 +1,55 @@
-# Dropbox source for Tachimanga
+# Dropbox for Mihon & Tachimanga
 
-A Kotlin extension targeting the Tachiyomi **1.4** API supported by Tachimanga. Browse your private Dropbox library and read CBZ/ZIP pages directly in the reader. No manga server, public shared links, or full-library download is required.
+A Dropbox manga extension for **Mihon on Android** and **Tachimanga on iOS**, targeting the Tachiyomi **1.4** extension API. Browse your private Dropbox library and read CBZ/ZIP pages directly in the reader. No manga server, public shared links, or full-library download is required.
 
 ## Install
 
-1. Transfer `dist/tachiyomi-all.dropbox-v1.4.11.apk` to your iPhone or iPad (Files, AirDrop, or iCloud Drive).
+The same `dist/tachiyomi-all.dropbox-v1.4.12.apk` supports both readers. The extension label is **Dropbox (Mihon + Tachimanga)**; the source inside the reader remains **Dropbox**. Package and source IDs are preserved, so updates do not require migrating saved manga or reconnecting Dropbox. The `tachiyomi` package/filename prefix identifies the extension format.
+
+### Mihon (Android)
+
+1. Transfer the APK to your Android device and open it to install. Allow installation from that app if Android prompts you.
+2. In Mihon, open **Browse → Extensions** and trust the extension if prompted.
+3. Open **Browse → Sources → Dropbox**, then source settings, and follow the connection steps below. See [Mihon's getting-started guide](https://mihon.app/docs/guides/getting-started) and [extension installation help](https://mihon.app/docs/faq/browse/extensions).
+
+### Tachimanga (iPhone/iPad)
+
+The APK is an extension package loaded by the reader, not a standalone reader application. On iOS, import it into Tachimanga.
+
+1. Transfer the APK to your iPhone or iPad.
 2. In Tachimanga, open **Browser/Browse → Extensions → +**, then select the APK. See [Tachimanga's manual-install guide](https://tachimanga.app/help/guides/extensions.html).
 3. Open **Sources → Dropbox → source settings** and follow the connection steps below.
 
-The APK is an extension package loaded by Tachimanga; you do not install it as an iOS application.
-
 ## Connect your Dropbox
 
-This APK includes the maintainer's public app key. You do **not** need a developer account or an app key:
+This APK includes the maintainer's public app key. You do **not** need a developer account or an app key. Set **Library folder** to your manga directory, such as `/Manga`, and leave **Custom Dropbox app (optional)** blank.
 
-1. Set **Library folder** to your manga directory, such as `/Manga`.
-2. Leave **Custom Dropbox app (optional)** blank.
-3. In source settings, open **Dropbox sign-in**, copy its automatically prepared link, and open it in Safari.
-4. Sign in and approve read access. Copy Dropbox's authorization code into **Dropbox authorization code** in source settings, then browse the source to finish connecting.
+### Android: sign in and return automatically
 
-The pending sign-in link is generated automatically and reused across source/settings reloads, keeping its PKCE verifier stable while you sign in. To reconnect as another account, select **Dropbox library actions → Disconnect Dropbox**, reopen settings, and use the new sign-in link. Authorization is available only through this settings link. Browser actions use the plain Dropbox website URL and never prepare sign-in links.
+1. In Mihon's Dropbox source settings, tap **Sign in to Dropbox**.
+2. Sign in and approve read access in your browser.
+3. Dropbox redirects back to the extension, which returns you to the reader and exchanges the code automatically. Wait for **Dropbox connected**, then browse the source. No code copying is needed.
 
-Tachimanga 5.1 runtime does not expose an iOS clipboard service to extensions: Android clipboard methods throw `Stub!`, and `Context.startActivity` and plain preference-click handling are no-ops. Therefore, this extension cannot supply a working native Copy button or clickable WebView link inside settings. Those controls require Tachimanga host support. Copying the authorization code back to source settings is still required because no native OAuth callback bridge is available.
+The button is available on native Android when the APK is installed as an Android package with its callback activity. A private extension loaded only inside Mihon cannot register that Android activity; use the manual flow below in that case. If the system closes the reader during authorization, or the session takes more than ten minutes, start sign-in again or use the manual link. Canceling or denying authorization does not connect the account.
+
+### iOS or manual fallback
+
+1. In source settings, open **Dropbox sign-in** (or **Dropbox sign-in (manual fallback)** on Android), copy its automatically prepared link, and open it in your browser (Safari on iOS).
+2. Sign in and approve read access. Copy Dropbox's authorization code into **Dropbox authorization code** in source settings, then browse the source to finish connecting.
+
+The manual link is generated automatically and reused across settings/source reloads. It has its own PKCE verifier and omits `redirect_uri`; starting Android sign-in does not change it. A successful connection clears both pending flows. To reconnect as another account, select **Dropbox library actions → Disconnect Dropbox**, reopen settings, and sign in again. Authorization starts only in source settings. Source/manga/chapter browser actions use the plain Dropbox website URL and never prepare sign-in links.
+
+Tachimanga 5.1 runtime does not expose an iOS clipboard service to extensions: Android clipboard methods throw `Stub!`, and `Context.startActivity` and plain preference-click handling are no-ops. Therefore, Tachimanga still uses the copyable link and pasted authorization code. The Android button and callback activity are excluded from its settings flow.
+
+### Maintainer: register the Android callback once
+
+In the [Dropbox App Console](https://www.dropbox.com/developers/apps), open the **same app used by the bundled public key**. Under **Settings → OAuth 2 → Redirect URIs**, add this exact value:
+
+```text
+dropbox-manga://oauth/callback
+```
+
+End users do not need to register anything. A custom app-key override needs this URI registered in that app too if using the automatic Android flow.
 
 To use your own Dropbox application, or a build without a bundled key:
 
@@ -29,16 +57,16 @@ To use your own Dropbox application, or a build without a bundled key:
 2. Under **Permissions**, enable only `files.metadata.read` and `files.content.read`, then submit the change.
 3. Copy the **App key** from the app's Settings tab into **Custom Dropbox app (optional)** (or **Dropbox app key** in an unconfigured build). Leave the app secret alone; this extension never needs it.
 4. Set **Library folder** to your manga directory, such as `/Manga`. For App folder access, use `/` to browse the app folder itself.
-5. Open the automatically prepared **Dropbox sign-in** link from source settings in Safari and approve the two read permissions. Dropbox will display an authorization code; no redirect URL needs to be registered.
+5. Open the automatically prepared **Dropbox sign-in** link from source settings in your browser and approve the two read permissions. Dropbox will display an authorization code; no redirect URL needs to be registered.
 6. Copy that code into **Dropbox authorization code** in the source settings. Return to Dropbox's source and browse it to finish connecting.
 
 The extension uses PKCE S256 and requests offline access. After connection it clears the single-use code/verifier and automatically renews short-lived access tokens with its refresh token. Credentials stay in the host app's source preferences; they are never included in page URLs or embedded in the APK. See [Dropbox's OAuth guide](https://docs.dropboxapi.com/dropbox-api/docs/oauth).
 
 Dropbox API requests bypass inherited host HTTP interceptors, event listeners, cookies, authenticators and disk caching, and do not follow redirects. Token responses are limited to 64 KiB; malformed responses produce generic errors without retaining response contents in exception causes. Other JSON API responses are limited to 8 MiB.
 
-Credentials still use the host app's source preferences. Their encryption, backup exclusions and diagnostic handling depend on Tachimanga; these have not been verified on iOS. The extension API has no implemented Keychain/secure-storage bridge, and the APK's backup setting does not configure the host app. Securing credential storage at rest requires host support.
+Credentials still use the host app's source preferences. Their encryption, backup exclusions and diagnostic handling depend on the reader; these have not been independently verified on either platform. The extension API has no implemented Keychain/secure-storage bridge, and the APK's backup setting does not configure the host app. Securing credential storage at rest requires host support.
 
-**Dropbox library actions → Disconnect Dropbox** removes saved credentials and the prepared link on this device and invalidates pending authentication responses, so a delayed sign-in or refresh cannot restore them. Reopening source settings can prepare a fresh sign-in link; that does not authorize access. To revoke the authorization at Dropbox, remove the app under your account's **Connected apps**. Do not paste credentials into issues or commit them to this project. If you change Dropbox accounts, remove the previous account's saved library items and downloaded/cached images in Tachimanga before adding the new account's library.
+**Dropbox library actions → Disconnect Dropbox** removes saved credentials and the prepared link on this device and invalidates pending authentication responses, so a delayed sign-in or refresh cannot restore them. Reopening source settings can prepare a fresh sign-in link; that does not authorize access. To revoke the authorization at Dropbox, remove the app under your account's **Connected apps**. Do not paste credentials into issues or commit them to this project. If you change Dropbox accounts, remove the previous account's saved library items and downloaded/cached images in your reader before adding the new account's library.
 
 
 ## Library layout
@@ -70,7 +98,7 @@ The reader obtains archive metadata, fetches the ZIP central directory with HTTP
 - Encrypted, split/multi-part, ZIP64, CBR/RAR, PDF and other compression methods are unsupported. Repack them as ordinary ZIP/CBZ files.
 - A page may be at most **32 MiB** compressed or decompressed; central directories at most **16 MiB** and 20,000 entries. The selected library is capped at 100,000 items.
 - ZIP filenames are limited to 1024 encoded bytes. Page indexes have a conservative 8 MiB accounting budget per archive; oversized indexes are rejected before sorting or building lookup maps. Cached indexes share a 16 MiB accounting budget, with eviction of the least recently used indexes and at most sixteen indexes retained. These budgets estimate index memory rather than the host app's total heap. At most two archive index loads run simultaneously.
-- Concurrent requests for the same archive revision share one index load; page entries are indexed by name and offset. Central directories are parsed from the already-fetched ZIP tail when they fit there, otherwise an exact directory range is requested. Page bytes are handed to Tachimanga, which controls reader caching and offline downloads. No archive extraction or page files are written by the extension.
+- Concurrent requests for the same archive revision share one index load; page entries are indexed by name and offset. Central directories are parsed from the already-fetched ZIP tail when they fit there, otherwise an exact directory range is requested. Page bytes are handed to the host reader, which controls reader caching and offline downloads. No archive extraction or page files are written by the extension.
 - A missing or incorrect HTTP range response produces an error instead of silently downloading a large archive. Dropbox rate-limit errors report the retry time.
 - Personal Dropbox and mounted shared folders in the selected account namespace are supported. Selecting a Dropbox Business team namespace is not implemented.
 
@@ -118,7 +146,7 @@ The `host-api` module contains pinned original extension API 1.4.2 and Injekt so
 
 ## Validation
 
-Automated JVM tests cover the Dropbox browse → series → archive → page flow using MockWebServer, pagination, PKCE exchange, token expiry/401 renewal, HTTP ranges and revisions, Unicode headers, natural ordering, stored/deflated archives, CRC corruption, encrypted/ZIP64 rejection and page-size limits. Security regressions cover oversized filenames and indexes, cache eviction by memory, simultaneous load limits, malformed/oversized token responses, host observer isolation and refusal of token redirects. Regression tests also cover disconnect during pending sign-in/refresh, app-key changes, nonblocking cache invalidation during slow loads, overlapping catalog refresh ordering, grouping at the 100,000-item limit, duplicate ZIP filenames, legacy page references, and canonical cover/relative-path comparisons after casing changes. Performance regression tests also cover shared archive loads and invalidation, catalog freshness/forced refresh, cover metadata reuse and revision updates, ZIP-tail request counts, and indexed lookups across 20,000 entries. No real Dropbox credentials are needed for these tests.
+Automated JVM tests cover the Dropbox browse → series → archive → page flow using MockWebServer, pagination, PKCE exchange, token expiry/401 renewal, HTTP ranges and revisions, Unicode headers, natural ordering, stored/deflated archives, CRC corruption, encrypted/ZIP64 rejection and page-size limits. Android callback tests cover separate manual PKCE state, matching redirect URIs in the exchange, state/route validation, expiry, replay, cancellation, missing offline tokens, and stale responses after disconnect/app changes or a newer attempt across source instances. Security regressions cover oversized filenames and indexes, cache eviction by memory, simultaneous load limits, malformed/oversized token responses, host observer isolation and refusal of token redirects. Regression tests also cover disconnect during pending sign-in/refresh, app-key changes, nonblocking cache invalidation during slow loads, overlapping catalog refresh ordering, grouping at the 100,000-item limit, duplicate ZIP filenames, legacy page references, and canonical cover/relative-path comparisons after casing changes. Performance regression tests also cover shared archive loads and invalidation, catalog freshness/forced refresh, cover metadata reuse and revision updates, ZIP-tail request counts, and indexed lookups across 20,000 entries. No real Dropbox credentials are needed for these tests.
 
 An offline integration check against the Java runtime bundled with the installed Tachimanga 5.1 reproduces the old settings crash and verifies APK version parsing, the executable build label, settings construction, preference JSON serialization, library edits, automatic stable PKCE links across source reloads, stable source metadata and browser URLs across connection states, settings-only authorization, refresh, and disconnect after the fix. It uses in-memory test preferences and makes no Dropbox requests or changes to the installed app's data. Run it after compiling with:
 
@@ -128,9 +156,14 @@ python3 scripts/test_tachimanga_runtime.py
 
 The script defaults to the runtime inside `/Applications/Tachimanga.app`, accepts `--runtime` and `--java-home`, and does not redistribute Tachimanga's code. The test-only harness uses Java reflection/Unsafe to provide memory preferences and a network client without invoking Android configuration constructors.
 
-The extension still requires a device acceptance check in **Tachimanga on iOS**, including native settings rendering, Safari/code copy, real Dropbox authorization and reader images. Offline runtime checks do not prove that end-to-end flow. No real Dropbox account or iOS reader session has been used during development.
+Android callback acceptance (still outstanding for this build):
 
-Device acceptance:
+1. Install this APK through Android's package installer, open Mihon's Dropbox settings, and confirm the **Sign in to Dropbox** button appears.
+2. For a fresh connection, tap the button, approve access, and confirm the browser returns to the reader with **Dropbox connected** without copying a code. Browse both a series and a standalone CBZ and read pages.
+3. Disconnect, reopen settings, and test cancel/deny followed by a successful retry. Verify the manual fallback still displays a code and connects when pasted.
+4. Close/reopen the reader after a successful connection and check that credentials persist; check reading after access-token expiry. If the reader is killed during authorization, restart sign-in rather than expecting a dead process to receive the callback.
+
+Tachimanga iOS device acceptance:
 
 1. Import the APK and confirm Dropbox appears as a source.
 2. Connect Dropbox with the steps above; check both a series folder and standalone CBZ.

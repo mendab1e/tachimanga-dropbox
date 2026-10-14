@@ -9,21 +9,23 @@
 
 ## Current deliverable
 
-- Kotlin APK extension targeting the Tachiyomi extension API **1.4**, intended for Tachimanga on iOS.
+- Kotlin APK extension targeting the Tachiyomi extension API **1.4**, for Mihon on Android and Tachimanga on iOS.
 - Application/package: `eu.kanade.tachiyomi.extension.all.dropbox`.
 - Source class: `eu.kanade.tachiyomi.extension.all.dropbox.Dropbox`.
-- Current version: `1.4.11`, version code `11`.
-- Installable artifact: `dist/tachiyomi-all.dropbox-v1.4.11.apk`.
+- Current version: `1.4.12`, version code `12`.
+- Installable artifact: `dist/tachiyomi-all.dropbox-v1.4.12.apk`.
 - Installation, connection steps, limitations, and device acceptance checks: `README.md`.
 - Local validation record: `dist/VALIDATION.md`. The entire `dist/` directory is Git-ignored; do not commit artifacts or files under it.
-- This is an extension loaded by Tachimanga, not a standalone Android or iOS reader.
+- Branding: Dropbox for Mihon & Tachimanga; APK label `Tachiyomi: Dropbox (Mihon + Tachimanga)`. Keep the source name `Dropbox`, language, versionId, package, and signing key stable to preserve saved source identities and updates.
+- This is an extension loaded by the reader, not a standalone Android or iOS reader.
 
 ## Code map
 
 Main Kotlin files are under `extension/src/main/kotlin/eu/kanade/tachiyomi/extension/all/dropbox/`:
 
 - `Dropbox.kt`: host source interface, source preferences, browsing/search/latest, manga/chapter/page conversion, synthetic image interceptor, archive-index cache.
-- `DropboxApi.kt`: Dropbox read-only HTTP API, pagination, OAuth PKCE and refresh tokens, metadata and revision-pinned byte-range downloads.
+- `DropboxApi.kt`: Dropbox read-only HTTP API, pagination, manual and Android callback PKCE flows and refresh tokens, metadata and revision-pinned byte-range downloads.
+- `AndroidSignIn.kt` and `src/main/java/.../AndroidOAuthActivity.java` / `OAuthContract.java`: native Android settings launcher, Binder callback relay, and strict callback parser; the Java activity must not depend on compile-only host libraries.
 - `RemoteZip.kt`: central-directory parsing and individual stored/deflated page decoding, bounded reads, size and CRC checks.
 - `Library.kt`: canonical library-path comparisons, cover lookup, and grouping archive files into series and chapters.
 - `LibraryCache.kt`: bounded archive-index and catalog caches; shared in-flight archive loads, one-minute catalog freshness, and invalidation/request generations.
@@ -61,7 +63,7 @@ Default Dropbox path is `/Manga`; `/` selects the account/app-folder root.
 - Page paths and chapter filenames are naturally sorted; chapter lists are returned in descending source order.
 - Search matches series/archive titles and reuses catalog data for up to one minute. Browse/Latest page 1 reloads; the Refresh Dropbox library setting invalidates catalog metadata immediately without discarding immutable archive indexes. Later pages retain their current snapshot past the freshness interval. Latest uses the newest archive modification timestamp in each series.
 - Saved manga/chapter references use Dropbox IDs; page requests pin immutable revisions. Keep these identities stable when changing the implementation.
-- The user explicitly chose authorization only via the link in settings. All source/manga/chapter browser URLs are static https://www.dropbox.com and never prepare OAuth state.
+- The user explicitly chose authorization only in settings: a manual link on iOS, and an optional native Android button/callback. All source/manga/chapter browser URLs are static https://www.dropbox.com and never prepare OAuth state.
 
 ## Archive and HTTP constraints
 
@@ -79,11 +81,13 @@ Default Dropbox path is `/Manga`; `/` selects the account/app-folder root.
 ## Authentication and iOS integration decisions
 
 - Current sign-in is OAuth authorization-code flow with **PKCE S256**, no app secret, and `token_access_type=offline`.
-- Settings start with a disabled executable build/version label (`extension_build`) to distinguish loaded source code from stale Extensions metadata, then include an optional custom app-key override, library path, library-actions ListPreference (refresh/disconnect), automatically prepared sign-in-link field, and authorization-code field. The sign-in flow uses the automatically prepared settings link in Safari, then the user pastes Dropbox's code into settings. Blank app-key overrides use `BuildConfig.DROPBOX_APP_KEY`; changing the effective OAuth client clears credentials, while equivalent keys preserve the connection.
-- A user reported HTTP 500 on opening settings. The installed Tachimanga 5.1 runtime reproduced `NoSuchMethodError: EditTextPreference.setPersistent(boolean)` with the old code. Its `Preference.setOnPreferenceClickListener` is a no-op. The settings bridge cannot open a clickable WebView link or copy to clipboard; the current sign-in flow requires copying the settings link into Safari. Never call `setPersistent()` or depend on plain Preference click actions; provide non-null typed defaults and stable keys, and use supported preference-change listeners. Returning false prevents host re-persistence after the API applies settings atomically.
+- Settings start with a disabled executable build/version label (`extension_build`) to distinguish loaded source code from stale Extensions metadata, then include an optional custom app-key override, library path, library-actions ListPreference (refresh/disconnect), automatically prepared sign-in-link field, and authorization-code field. On iOS, the sign-in flow uses the automatically prepared settings link in Safari, then the user pastes Dropbox's code into settings. Native Android also has a settings-only Sign in to Dropbox button and automatic callback relay when the extension APK is installed as an Android package. Blank app-key overrides use `BuildConfig.DROPBOX_APP_KEY`; changing the effective OAuth client clears credentials, while equivalent keys preserve the connection.
+- A user reported HTTP 500 on opening settings. The installed Tachimanga 5.1 runtime reproduced `NoSuchMethodError: EditTextPreference.setPersistent(boolean)` with the old code. Its `Preference.setOnPreferenceClickListener` is a no-op. The settings bridge cannot open a clickable WebView link or copy to clipboard; the current sign-in flow requires copying the settings link into Safari. Never call `setPersistent()` or depend on plain Preference click actions on Tachimanga; the explicitly requested Android-only button may use native click listeners behind the real-Android/installed-activity gate; provide non-null typed defaults and stable keys, and use supported preference-change listeners. Returning false prevents host re-persistence after the API applies settings atomically.
 - `authorization_url` stores the prepared public PKCE challenge link, never the verifier in the URL. It is removed on disconnect, app changes, and successful code exchange. `signInLink()` reuses the pending link/verifier across reloads and does not start authorization for an already linked account.
 - The user requested simpler generation and a Copy button. Tachimanga 5.1's ClipboardManager methods throw Stub!, its CustomContext has no clipboard service, and startActivity is a no-op. Do not add fake controls. Versions 1.4.8/1.4.9 returned the OAuth URL from getHomeUrl(), but a device screenshot showed it beneath the browse title, even while manga were displayed. The runtime Source DTO exposes one baseUrl for both the source WebView and subtitle; there is no separate display/browser URL. Version 1.4.10 returns static baseUrl from getHomeUrl() without touching authentication. Do not reintroduce OAuth parameters into source metadata. The older 1.4 compile-only API does not declare this hook, so it is declared without override and checked through the real parent's virtual dispatch. Version 1.4.11 removes the remaining manga/chapter OAuth browser behavior at the user's request. All browser hooks return static baseUrl; browserUrl() was removed. Authentication errors direct users to the settings link. Keep authorization exclusively in settings.
-- Authorization has no redirect URI: Dropbox displays a code that the user pastes into source settings. Browsing completes the exchange and clears the code/verifier.
+- Manual/iOS authorization has no redirect URI: Dropbox displays a code that the user pastes into source settings. Browsing completes the exchange and clears the code/verifier.
+- Android callback: `dropbox-manga://oauth/callback`, registered in the maintainer app per the user on 2026-10-14 (not independently checked live). The installed APK has a Java-only callback activity with no host runtime dependencies. It relays the code via an explicit ResultReceiver/Binder capability to the source in the reader process; the verifier and tokens never enter the activity. Keep the manual PKCE link/verifier separate and unchanged. Callback state expires after ten minutes, rejects duplicate/mismatched/expired callbacks, and checks persisted state before saving tokens so disconnect, app changes, manual entry or new attempts from recreated sources cannot restore obsolete credentials. Process death requires restarting sign-in or using manual fallback. No launcher activity/icon is added.
+- Tachimanga 5.1/build 520 rechecked on 2026-10-14: Preference click-listener setter and CustomContext.startActivity methods are no-ops. Its iOS Info.plist registers tachiyomi/tachimanga/mihon URL schemes, but this does not establish an extension OAuth routing hook; no supported callback bridge was identified. Scope limitations to the current host/runtime rather than all iOS apps or future versions.
 - Request only `files.metadata.read` and `files.content.read`. Refresh access tokens automatically and retry authentication failures at most once.
 - Use the private API client that removes inherited interceptors, event listeners, cookies, authenticators and disk caches; refuse redirects. Bound token JSON responses to 64 KiB and other JSON responses to 8 MiB. Never retain token parser errors as exception causes.
 - Credentials live in the host app's source preferences. At-rest encryption and backup exclusions depend on the host; no secure-storage bridge is implemented. The extension manifest does not configure host backup behavior. Never put tokens in image URLs, errors, logs, checked-in files, or APK assets.
@@ -145,10 +149,14 @@ At the initial delivery:
 - DEX class definitions were inspected to confirm host/dependency implementations were absent.
 - Tests cover mock Dropbox browse-to-page flow, cursors, PKCE exchange, token renewal, ranges/revisions, Unicode headers, natural ordering, ZIP decoding and error/limit handling.
 
-Current 1.4.11 verification: 60 JVM tests passed, release/debug lint passed, APK signatures verified, and the maintainer public key was confirmed in the APK. The maintainer key file is now ignored by Git; local builds still read it, while fresh CI checkouts need `vars.DROPBOX_APP_KEY` to bundle the key. The user supplied a device screenshot with manga visible and an unwanted OAuth URL subtitle. Live OAuth/reading acceptance checks remain outstanding; the screenshot does not establish complete reader validation.
+Current deliverable remains unreleased 1.4.12/code 12 at the user's request; Android callback work is included in that release rather than bumping to 1.4.13. 75 JVM tests cover the existing suite and callback security, exchange and cancellation; release/debug lint and offline Tachimanga checks pass. Native Android browser/ResultReceiver handoff and live callback sign-in remain unverified. See dist/VALIDATION.md for final packaging/signature validation.
+
+Previous 1.4.11 verification: 60 JVM tests passed, release/debug lint passed, APK signatures verified, and the maintainer public key was confirmed in the APK. The maintainer key file is now ignored by Git; local builds still read it, while fresh CI checkouts need `vars.DROPBOX_APP_KEY` to bundle the key. The user supplied a device screenshot with manga visible and an unwanted OAuth URL subtitle. Live OAuth/reading acceptance checks remain outstanding; the screenshot does not establish complete reader validation.
 
 Runtime integration: `python3 scripts/test_tachimanga_runtime.py` tests release class files against the Java/Android compatibility classes from an installed Tachimanga runtime (default `/Applications/Tachimanga.app/Wrapper/Tachimanga.app/MCHome.bundle/res.zip`). It checks the built APK package/version with the host's actual APK parser, uses test-only memory preferences, checks the executable build label and settings JSON serialization, and exercises library edits, sign-in-link preparation/reload, refresh and disconnect without network requests. Do not redistribute the host runtime or use real app preferences in this test. The harness uses reflection/Unsafe solely to bypass Android configuration constructors.
 
-**Not yet verified:** live Dropbox OAuth/API access or native Tachimanga iOS rendering/reading. Settings behavior has been verified offline against the installed Tachimanga 5.1 compatibility classes; those checks do not prove the UI, Safari/code-copy flow, or real reader images.
+On 2026-10-14 the user reported that the extension works properly in Mihon. No Mihon/Android versions or individual acceptance results were supplied; do not infer detailed coverage.
+
+**Not yet independently verified:** live Dropbox OAuth/API access or native Tachimanga iOS rendering/reading. Settings behavior has been verified offline against the installed Tachimanga 5.1 compatibility classes; those checks do not prove the UI, Safari/code-copy flow, or real reader images.
 
 Preserve that distinction in reports. Follow `README.md`'s device acceptance checks when a device/live account becomes available. For code changes, run relevant tests and the release/package checks; do not rerun builds solely for documentation edits.

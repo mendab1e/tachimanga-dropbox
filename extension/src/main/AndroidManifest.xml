@@ -4,5 +4,14 @@
     <application android:label="${appName}" android:icon="@mipmap/ic_launcher" android:allowBackup="false" android:supportsRtl="true">
         <meta-data android:name="tachiyomi.extension.class" android:value=".Dropbox" />
         <meta-data android:name="tachiyomi.extension.nsfw" android:value="0" />
+        <activity android:name=".AndroidOAuthActivity" android:exported="true" android:launchMode="singleTask"
+            android:excludeFromRecents="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="dropbox-manga" android:host="oauth" android:path="/callback" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

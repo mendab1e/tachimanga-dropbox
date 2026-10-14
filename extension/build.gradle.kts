@@ -16,10 +16,10 @@ android {
         applicationId = "eu.kanade.tachiyomi.extension.all.dropbox"
         minSdk = 21
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.4.11"
+        versionCode = 12
+        versionName = "1.4.12"
         buildConfigField("String", "DROPBOX_APP_KEY", "\"$bundledDropboxAppKey\"")
-        manifestPlaceholders["appName"] = "Tachiyomi: Dropbox"
+        manifestPlaceholders["appName"] = "Tachiyomi: Dropbox (Mihon + Tachimanga)"
     }
     signingConfigs {
         getByName("debug") {

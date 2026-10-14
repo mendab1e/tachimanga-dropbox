@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.text.InputType
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
+import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -163,6 +164,16 @@ class Dropbox : HttpSource(), ConfigurableSource {
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         api.signInLink() // Prepare once; opening/reloading settings must not rotate the verifier.
+        val androidCallback = AndroidSignIn.available(screen.context)
+        var androidSignInPreference: Preference? = null
+        val textPreferences = mutableMapOf<String, EditTextPreference>()
+        fun updateAndroidSignInPreference() {
+            val preference = androidSignInPreference ?: return
+            val connected = api.isConnected()
+            preference.isEnabled = !connected
+            preference.summary = if (connected) "Connected. Disconnect to connect another account." else
+                "Authorize in your browser and return here automatically."
+        }
         // The executable source reports its own build, independently of the
         // host's extension-list metadata or any persisted preference value.
         screen.addPreference(EditTextPreference(screen.context).apply {
@@ -183,12 +194,14 @@ class Dropbox : HttpSource(), ConfigurableSource {
                 // A typed default is also required when it serializes preferences.
                 setDefaultValue(current)
                 this.text = current
+                textPreferences[key] = this
                 if (secret) setOnBindEditTextListener { it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
                 setOnPreferenceChangeListener { _, value ->
                     if (readOnly) return@setOnPreferenceChangeListener false
                     val text = (value as String).trim()
                     if (key == "library_path" && runCatching { Library.root(text) }.isFailure) return@setOnPreferenceChangeListener false
                     api.updateSetting(key, text)
+                    if (key == "app_key") updateAndroidSignInPreference()
                     cache.invalidate()
                     setDefaultValue(text)
                     false // Already applied; do not let the preference persist it a second time.
@@ -206,19 +219,45 @@ class Dropbox : HttpSource(), ConfigurableSource {
         screen.addPreference(ListPreference(screen.context).apply {
             key = "connection_action"
             title = "Dropbox library actions"
-            summary = "Refresh the library or disconnect. Use the Dropbox sign-in link below to connect."
+            summary = "Refresh the library or disconnect. Use the sign-in settings below to connect."
             entries = arrayOf("Choose an action", "Refresh Dropbox library", "Disconnect Dropbox")
             entryValues = arrayOf("", "refresh", "disconnect")
             setDefaultValue("")
             setOnPreferenceChangeListener { _, value ->
                 when (value as String) {
                     "refresh" -> cache.refreshCatalog()
-                    "disconnect" -> clearConnection()
+                    "disconnect" -> {
+                        clearConnection()
+                        updateAndroidSignInPreference()
+                    }
                 }
                 false // Commands execute once and are never persisted as a selection.
             }
         })
-        text("authorization_url", "Dropbox sign-in", "Open this automatically prepared link in Safari to authorize Dropbox, then paste the returned code below.", readOnly = true)
+        if (androidCallback) {
+            screen.addPreference(Preference(screen.context).apply {
+                androidSignInPreference = this
+                key = "android_sign_in"
+                title = "Sign in to Dropbox"
+                setDefaultValue("")
+                updateAndroidSignInPreference()
+                setOnPreferenceClickListener {
+                    AndroidSignIn.start(screen.context, api) {
+                        cache.invalidate()
+                        listOf("authorization_url", "auth_code").forEach { key ->
+                            textPreferences[key]?.apply {
+                                text = ""
+                                setDefaultValue("")
+                            }
+                        }
+                        updateAndroidSignInPreference()
+                    }
+                    true
+                }
+            })
+        }
+        text("authorization_url", if (androidCallback) "Dropbox sign-in (manual fallback)" else "Dropbox sign-in",
+            "Open this automatically prepared link in your browser to authorize Dropbox, then paste the returned code below.", readOnly = true)
         text("auth_code", "Dropbox authorization code", "Paste the code from Dropbox. Open the source to finish sign-in; the code is then cleared.", secret = true)
     }
     private fun clearConnection() {
