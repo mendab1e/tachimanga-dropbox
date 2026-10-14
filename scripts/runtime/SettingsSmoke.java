@@ -53,6 +53,11 @@ public class SettingsSmoke {
         // Use the parent's virtual method, exactly as Tachimanga's Source DTO does.
         assertCleanHome(source);
         if (!values.isEmpty()) throw new AssertionError("Reading source metadata prepared OAuth credentials");
+        boolean androidSettings = args.length > 0 && args[0].equals("android-settings");
+        if (androidSettings) {
+            values.put("app_key", eu.kanade.tachiyomi.extension.all.dropbox.BuildConfig.DROPBOX_APP_KEY.isEmpty() ? "original-key" : "");
+            values.put("refresh_token", "test-refresh-token");
+        }
         PreferenceScreen screen = new PreferenceScreen(app);
         screen.setSharedPreferences(prefs);
         source.setupPreferenceScreen(screen);
@@ -70,6 +75,7 @@ public class SettingsSmoke {
         if (!json.contains("authorization_url") || !json.contains("ListPreference")) throw new AssertionError("Settings JSON omitted expected controls");
         System.out.println("Settings screen created with " + screen.getPreferences().size() + " serializable preferences");
         if (args.length > 0 && args[0].equals("actions")) exercise(source, screen);
+        if (androidSettings) exerciseAndroidSettings(screen);
     }
     private static SharedPreferences.Editor editor() {
         final Map<String, Object> pending = new HashMap<>();
@@ -125,5 +131,46 @@ public class SettingsSmoke {
         assertCleanHome(source);
         if (!"".equals(values.get("verifier"))) throw new AssertionError("Source metadata restarted OAuth after disconnect");
         System.out.println("Settings-only stable PKCE link, clean browser hooks across connection states, library edit, refresh and disconnect passed without network requests");
+    }
+    private static void exerciseAndroidSettings(PreferenceScreen screen) {
+        Preference signIn = find(screen, "android_sign_in");
+        if (signIn.isEnabled() || !signIn.getSummary().toString().startsWith("Connected.")) throw new AssertionError("Connected account can start sign-in");
+        String bundled = eu.kanade.tachiyomi.extension.all.dropbox.BuildConfig.DROPBOX_APP_KEY;
+        String sameKey = bundled.isEmpty() ? "original-key" : bundled;
+        change(screen, "app_key", " " + sameKey + " ");
+        if (signIn.isEnabled() || !"test-refresh-token".equals(values.get("refresh_token"))) throw new AssertionError("Equivalent key disconnected account");
+        if (!bundled.isEmpty()) {
+            change(screen, "app_key", "");
+            if (signIn.isEnabled() || !"test-refresh-token".equals(values.get("refresh_token"))) throw new AssertionError("Default key disconnected equivalent override");
+        }
+        change(screen, "app_key", sameKey + "replacement");
+        if (!signIn.isEnabled() || signIn.getSummary().toString().startsWith("Connected.")) throw new AssertionError("App change did not refresh sign-in button");
+        if (!"".equals(values.get("refresh_token"))) throw new AssertionError("New app retained old credentials");
+        change(screen, "library_path", " /Books ");
+        if (!"/Books".equals(values.get("library_path"))) throw new AssertionError("Library edit not trimmed and saved");
+        change(screen, "library_path", "relative/path");
+        if (!"/Books".equals(values.get("library_path"))) throw new AssertionError("Invalid library path was saved");
+        Map<String, Object> before = new HashMap<>(values);
+        change(screen, "authorization_url", "https://example.com/forged");
+        if (!before.equals(values)) throw new AssertionError("Read-only sign-in link changed settings");
+        change(screen, "auth_code", " manual-code ");
+        if (!"manual-code".equals(values.get("auth_code"))) throw new AssertionError("Manual code not trimmed and saved");
+        values.put("refresh_token", "test-refresh-token");
+        before = new HashMap<>(values);
+        change(screen, "connection_action", "refresh");
+        if (!before.equals(values)) throw new AssertionError("Library refresh changed credentials or persisted a command");
+        PreferenceScreen connected = new PreferenceScreen(screen.getContext());
+        connected.setSharedPreferences(prefs);
+        new Dropbox().setupPreferenceScreen(connected);
+        change(connected, "connection_action", "disconnect");
+        if (!find(connected, "android_sign_in").isEnabled()
+                || find(connected, "android_sign_in").getSummary().toString().startsWith("Connected.")) throw new AssertionError("Disconnect did not refresh button");
+        for (String key : Arrays.asList("access_token", "refresh_token", "auth_code", "verifier", "authorization_url", "callback_state", "callback_verifier", "callback_expires_at", "callback_claim")) {
+            if (!"".equals(values.get(key))) throw new AssertionError("Disconnect retained " + key);
+        }
+        System.out.println("Offline Android settings specs passed: equivalent/replacement keys, button state, library validation, read-only link, code entry, refresh and disconnect");
+    }
+    private static void change(PreferenceScreen screen, String key, String value) {
+        if (find(screen, key).callChangeListener(value)) throw new AssertionError("Host could re-persist setting/command: " + key);
     }
 }

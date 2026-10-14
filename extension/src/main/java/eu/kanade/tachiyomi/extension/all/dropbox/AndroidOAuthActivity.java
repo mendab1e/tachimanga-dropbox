@@ -34,7 +34,7 @@ public final class AndroidOAuthActivity extends Activity {
             authorizationUrl = getIntent().getStringExtra(OAuthContract.URL);
             if (validAuthorizationUrl(authorizationUrl)) {
                 state = Uri.parse(authorizationUrl).getQueryParameter(OAuthContract.STATE);
-                expiresAt = System.currentTimeMillis() + 10 * 60 * 1000;
+                expiresAt = System.currentTimeMillis() + OAuthContract.SESSION_LIFETIME_MS;
             }
         }
         if (receiver == null || state == null || state.isEmpty() || authorizationUrl == null
@@ -51,14 +51,14 @@ public final class AndroidOAuthActivity extends Activity {
     }
 
     private boolean validAuthorizationUrl(String value) {
-        if (value == null || value.length() > 8192) return false;
+        if (value == null || value.length() > OAuthContract.MAX_URL_LENGTH) return false;
         Uri uri = Uri.parse(value);
         return "https".equals(uri.getScheme()) && "www.dropbox.com".equals(uri.getAuthority())
                 && "/oauth2/authorize".equals(uri.getPath()) && uri.getFragment() == null
                 && OAuthContract.REDIRECT_URI.equals(uri.getQueryParameter("redirect_uri"))
                 && "code".equals(uri.getQueryParameter("response_type"))
                 && "S256".equals(uri.getQueryParameter("code_challenge_method"))
-                && uri.getQueryParameter("state") != null && uri.getQueryParameter("state").length() == 64;
+                && uri.getQueryParameter("state") != null && uri.getQueryParameter("state").length() == OAuthContract.STATE_LENGTH;
     }
 
     @Override protected void onNewIntent(Intent intent) {

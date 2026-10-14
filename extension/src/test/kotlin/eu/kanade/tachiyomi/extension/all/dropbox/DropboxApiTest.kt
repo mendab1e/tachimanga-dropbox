@@ -69,6 +69,14 @@ class DropboxApiTest {
         assertEquals("/oauth2/token", server.takeRequest().path)
         assertEquals("Bearer renewed-token", server.takeRequest().getHeader("Authorization"))
     }
+    @Test fun aSecond401FailsWithoutAnotherRefreshOrRetry() {
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.enqueue(json("""{"access_token":"renewed-token","expires_in":14400}"""))
+        server.enqueue(MockResponse().setResponseCode(401))
+        expectFailure { api.metadata("id:book") }
+        assertEquals(3, server.requestCount)
+        assertEquals("refresh-token", settings.get("refresh_token"))
+    }
     @Test fun pkceCodeExchangeClearsSingleUseCode() {
         val url = api.authorizationUrl()
         assertTrue(url.contains("code_challenge_method=S256"))
@@ -84,6 +92,7 @@ class DropboxApiTest {
         assertTrue(exchange.contains("code_verifier="))
         assertTrue(exchange.contains("grant_type=authorization_code"))
         assertFalse(exchange.contains("client_secret"))
+        assertFalse(exchange.contains("redirect_uri"))
         assertEquals("", settings.get("auth_code"))
         assertEquals("", settings.get("verifier"))
         assertEquals("", settings.get("authorization_url"))

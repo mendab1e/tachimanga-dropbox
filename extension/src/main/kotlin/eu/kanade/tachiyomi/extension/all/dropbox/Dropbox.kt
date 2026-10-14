@@ -2,10 +2,6 @@ package eu.kanade.tachiyomi.extension.all.dropbox
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.text.InputType
-import androidx.preference.EditTextPreference
-import androidx.preference.ListPreference
-import androidx.preference.Preference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -127,7 +123,7 @@ class Dropbox : HttpSource(), ConfigurableSource {
     }
     private fun browse(page: Int, query: String = "", latest: Boolean = false, search: Boolean = false): MangasPage {
         require(page >= 1) { "Page numbers start at 1" }
-        val root = Library.root(settings.get("library_path").ifBlank { "/Manga" })
+        val root = Library.root(settings.get(SettingKey.LIBRARY_PATH).ifBlank { "/Manga" })
         val catalog = library.catalog(root, refresh = page == 1 && !search, allowStale = page > 1)
         val matches = catalog.filter { it.file.name.contains(query.trim(), ignoreCase = true) }
             .let { if (latest) it.sortedByDescending { series -> series.modified } else it }
@@ -163,106 +159,7 @@ class Dropbox : HttpSource(), ConfigurableSource {
     override fun getFilterList() = FilterList()
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        api.signInLink() // Prepare once; opening/reloading settings must not rotate the verifier.
-        val androidCallback = AndroidSignIn.available(screen.context)
-        var androidSignInPreference: Preference? = null
-        val textPreferences = mutableMapOf<String, EditTextPreference>()
-        fun updateAndroidSignInPreference() {
-            val preference = androidSignInPreference ?: return
-            val connected = api.isConnected()
-            preference.isEnabled = !connected
-            preference.summary = if (connected) "Connected. Disconnect to connect another account." else
-                "Authorize in your browser and return here automatically."
-        }
-        // The executable source reports its own build, independently of the
-        // host's extension-list metadata or any persisted preference value.
-        screen.addPreference(EditTextPreference(screen.context).apply {
-            key = "extension_build"
-            title = "Dropbox extension ${BuildConfig.VERSION_NAME}"
-            summary = "Installed source build ${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})"
-            setDefaultValue("${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})")
-            isEnabled = false
-        })
-        fun text(key: String, title: String, summary: String, secret: Boolean = false, readOnly: Boolean = false) {
-            screen.addPreference(EditTextPreference(screen.context).apply {
-                this.key = key
-                this.title = title
-                this.summary = summary
-                dialogTitle = title
-                val current = settings.get(key).ifBlank { if (key == "library_path") "/Manga" else "" }
-                // Tachimanga's Android compatibility layer has no setPersistent().
-                // A typed default is also required when it serializes preferences.
-                setDefaultValue(current)
-                this.text = current
-                textPreferences[key] = this
-                if (secret) setOnBindEditTextListener { it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
-                setOnPreferenceChangeListener { _, value ->
-                    if (readOnly) return@setOnPreferenceChangeListener false
-                    val text = (value as String).trim()
-                    if (key == "library_path" && runCatching { Library.root(text) }.isFailure) return@setOnPreferenceChangeListener false
-                    api.updateSetting(key, text)
-                    if (key == "app_key") updateAndroidSignInPreference()
-                    cache.invalidate()
-                    setDefaultValue(text)
-                    false // Already applied; do not let the preference persist it a second time.
-                }
-            })
-        }
-        if (BuildConfig.DROPBOX_APP_KEY.isBlank()) {
-            text("app_key", "Dropbox app key", "Public app key from your Dropbox developer app. No app secret is needed.")
-        } else {
-            text("app_key", "Custom Dropbox app (optional)", "Leave blank to use the included Dropbox connection. Changing apps requires reconnecting.")
-        }
-        text("library_path", "Library folder", "Default: /Manga. One subfolder per series; CBZ/ZIP files are chapters. Use / for the Dropbox root.")
-        // Tachimanga ignores click listeners on plain Preference rows. List
-        // selections reach its supported preference-change endpoint instead.
-        screen.addPreference(ListPreference(screen.context).apply {
-            key = "connection_action"
-            title = "Dropbox library actions"
-            summary = "Refresh the library or disconnect. Use the sign-in settings below to connect."
-            entries = arrayOf("Choose an action", "Refresh Dropbox library", "Disconnect Dropbox")
-            entryValues = arrayOf("", "refresh", "disconnect")
-            setDefaultValue("")
-            setOnPreferenceChangeListener { _, value ->
-                when (value as String) {
-                    "refresh" -> cache.refreshCatalog()
-                    "disconnect" -> {
-                        clearConnection()
-                        updateAndroidSignInPreference()
-                    }
-                }
-                false // Commands execute once and are never persisted as a selection.
-            }
-        })
-        if (androidCallback) {
-            screen.addPreference(Preference(screen.context).apply {
-                androidSignInPreference = this
-                key = "android_sign_in"
-                title = "Sign in to Dropbox"
-                setDefaultValue("")
-                updateAndroidSignInPreference()
-                setOnPreferenceClickListener {
-                    AndroidSignIn.start(screen.context, api) {
-                        cache.invalidate()
-                        listOf("authorization_url", "auth_code").forEach { key ->
-                            textPreferences[key]?.apply {
-                                text = ""
-                                setDefaultValue("")
-                            }
-                        }
-                        updateAndroidSignInPreference()
-                    }
-                    true
-                }
-            })
-        }
-        text("authorization_url", if (androidCallback) "Dropbox sign-in (manual fallback)" else "Dropbox sign-in",
-            "Open this automatically prepared link in your browser to authorize Dropbox, then paste the returned code below.", readOnly = true)
-        text("auth_code", "Dropbox authorization code", "Paste the code from Dropbox. Open the source to finish sign-in; the code is then cleared.", secret = true)
-    }
-    private fun clearConnection() {
-        api.disconnect()
-        cache.invalidate()
+        DropboxPreferences(screen, settings, api, { cache.invalidate() }, { cache.refreshCatalog() }).setup()
     }
 
     // Fetch methods above own the multi-request API/ZIP workflow.

@@ -17,11 +17,15 @@ public final class OAuthContract {
     public static final String URL = "authorization_url";
     public static final String STATE = "state";
     public static final String CODE = "code";
+    public static final long SESSION_LIFETIME_MS = 10 * 60 * 1000L;
+    public static final int STATE_LENGTH = 64;
+    public static final int MAX_URL_LENGTH = 8192;
+    public static final int MAX_CODE_LENGTH = 4096;
 
     private OAuthContract() {}
 
     public static boolean validCode(String code) {
-        if (code == null || code.isEmpty() || code.length() > 4096) return false;
+        if (code == null || code.isEmpty() || code.length() > MAX_CODE_LENGTH) return false;
         for (int i = 0; i < code.length(); i++) {
             if (code.charAt(i) < 33 || code.charAt(i) > 126) return false;
         }
@@ -30,7 +34,7 @@ public final class OAuthContract {
 
     /** Null means invalid; an empty code means the user denied access. Never return error text. */
     public static String callbackCode(String url, String expectedState) {
-        if (url == null || url.length() > 8192 || expectedState == null || expectedState.isEmpty()) return null;
+        if (url == null || url.length() > MAX_URL_LENGTH || expectedState == null || expectedState.isEmpty()) return null;
         try {
             URI uri = new URI(url);
             if (!"dropbox-manga".equals(uri.getScheme()) || !"oauth".equals(uri.getRawAuthority())

@@ -22,3 +22,11 @@ with tempfile.TemporaryDirectory(prefix='dropbox-settings-') as temp:
                     str(root / 'scripts/runtime/SettingsSmoke.java')], check=True)
     subprocess.run([str(args.java_home / 'bin/java'), '-cp', classpath + os.pathsep + temp,
                     'SettingsSmoke', 'actions', str(root / 'extension/build/outputs/apk/release/extension-release.apk')], check=True)
+    # Separate JVM: exercise Android settings behavior with only the availability gate doubled.
+    # The real Tachimanga compatibility check above always loads production AndroidSignIn.
+    native_specs = Path(temp) / 'android-settings'
+    native_specs.mkdir()
+    subprocess.run([str(args.java_home / 'bin/javac'), '-cp', classpath, '-d', str(native_specs),
+                    str(root / 'scripts/runtime/fixtures/AndroidSignIn.java')], check=True)
+    subprocess.run([str(args.java_home / 'bin/java'), '-cp', os.pathsep.join([str(native_specs), classpath, temp]),
+                    'SettingsSmoke', 'android-settings'], check=True)

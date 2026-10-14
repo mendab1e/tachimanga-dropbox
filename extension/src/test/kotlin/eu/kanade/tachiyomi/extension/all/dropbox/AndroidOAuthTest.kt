@@ -102,6 +102,24 @@ class AndroidOAuthTest {
         failure { api.completeAndroidSignIn(state(), "user-code") }
         assertEquals(0, server.requestCount)
     }
+    @Test fun callbackLifetimeIsTenMinutes() {
+        val before = System.currentTimeMillis()
+        api.beginAndroidSignIn()
+        val after = System.currentTimeMillis()
+        val expires = settings.get("callback_expires_at").toLong()
+        assertTrue(expires in (before + 600_000)..(after + 600_000))
+    }
+    @Test fun equivalentAppKeyPreservesPendingCallbackAcrossSources() {
+        val manual = api.signInLink()
+        api.beginAndroidSignIn()
+        val state = state()
+        newApi().updateSetting("app_key", " bundled-key ")
+        assertEquals(state, state())
+        assertEquals(manual, api.signInLink())
+        server.enqueue(token())
+        api.completeAndroidSignIn(state, "user-code")
+        assertTrue(api.isConnected())
+    }
     @Test fun startingAgainRejectsOlderCallback() {
         api.beginAndroidSignIn()
         val old = state()
@@ -168,6 +186,48 @@ class AndroidOAuthTest {
         pendingExchange { it.updateSetting("app_key", "replacement-key") }
         assertEquals("replacement-key", settings.get("app_key"))
         assertEquals("", settings.get("refresh_token"))
+    }
+    @Test fun callbackExpiringDuringExchangeCannotSaveTokens() {
+        pendingExchange { values["callback_expires_at"] = "0" }
+        assertEquals("", settings.get("access_token"))
+        assertCallbackCleared()
+    }
+    @Test fun manualEntryDuringCallbackExchangePreservesTheManualFlow() {
+        val manual = api.signInLink()
+        val verifier = settings.get("verifier")
+        pendingExchange { it.updateSetting("auth_code", "manual-code") }
+        assertEquals("manual-code", settings.get("auth_code"))
+        assertEquals(manual, settings.get("authorization_url"))
+        assertEquals(verifier, settings.get("verifier"))
+        assertEquals("", settings.get("refresh_token"))
+        assertCallbackCleared()
+    }
+    @Test fun duplicateCallbackAcrossSourcesDoesNotCancelTheClaimedExchange() {
+        api.beginAndroidSignIn()
+        val state = state()
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                started.countDown()
+                if (!release.await(5, TimeUnit.SECONDS)) return MockResponse().setResponseCode(500)
+                return token()
+            }
+        }
+        val worker = Executors.newSingleThreadExecutor()
+        try {
+            val exchange = worker.submit { api.completeAndroidSignIn(state, "user-code") }
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+            failure { newApi().completeAndroidSignIn(state, "user-code") }
+            assertEquals("exchanging", settings.get("callback_claim"))
+            release.countDown()
+            exchange.get(5, TimeUnit.SECONDS)
+            assertTrue(api.isConnected())
+            assertEquals(1, server.requestCount)
+        } finally {
+            release.countDown()
+            worker.shutdownNow()
+        }
     }
     @Test fun pendingCallbackCannotEraseNewAuthorization() {
         var replacement = ""
